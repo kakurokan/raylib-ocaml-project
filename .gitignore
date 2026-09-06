@@ -1,3 +1,7 @@
-echo "_build/" > .gitignore
-echo ".merlin" >> .gitignore
-echo "*~" >> .gitignore
+_build/
+.merlin
+*.install
+*~
+*.swp
+.vscode
+.ocamlformat

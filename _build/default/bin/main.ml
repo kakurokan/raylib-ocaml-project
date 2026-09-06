@@ -1,6 +1,0 @@
-open Raylib
-
-type state = {
-  
-}
-

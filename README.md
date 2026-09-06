@@ -11,6 +11,7 @@ Ensure you have a working OCaml development environment with the `opam` package 
 Because Raylib relies on native windowing and graphics libraries (OpenGL/X11/Wayland), install the required system packages:
 
 **Ubuntu / Pop!_OS / Debian:**
+
 ```bash
 sudo apt update
 sudo apt install libgl1-mesa-dev libglu1-mesa-dev xorg-dev libwayland-dev
@@ -78,26 +79,25 @@ dune exec ./bin/main.exe
 ## 🛠️ Useful Commands
 
 * **Build only:**
+
 ```bash
 dune build
 
 ```
 
-
 * **Clean build artifacts (`_build/`):**
+
 ```bash
 dune clean
 
 ```
 
-
 * **Watch mode (rebuilds automatically on save):**
+
 ```bash
 dune build -w
 
 ```
-
-
 
 ---
 
