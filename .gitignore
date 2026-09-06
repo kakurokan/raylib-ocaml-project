@@ -1,0 +1,3 @@
+echo "_build/" > .gitignore
+echo ".merlin" >> .gitignore
+echo "*~" >> .gitignore

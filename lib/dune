@@ -1,0 +1,2 @@
+(library
+ (name raylib_ocaml_demo))

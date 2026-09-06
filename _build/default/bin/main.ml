@@ -1,0 +1,6 @@
+open Raylib
+
+type state = {
+  
+}
+
