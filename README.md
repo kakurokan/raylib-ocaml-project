@@ -115,12 +115,3 @@ dune build -w
 ## 📄 License
 
 Distributed under the [MIT](https://www.google.com/search?q=LICENSE) License.
-
-```
-
-Para atualizar o arquivo e sincronizar com o GitHub:
-
-```bash
-git add README.md
-git commit -m "docs: translate README to English"
-git push
