@@ -97,12 +97,7 @@ let handle_player_enemy_collisions (enemy : enemy) (player : player) : enemy =
       let player_speed = Vector2.length player.velocity in
       let push_force = Float.max player_speed 250.0 in
       let impulse = Vector2.scale dir push_force in
-      {
-        position = enemy.position;
-        velocity = Some impulse;
-        radius = enemy.radius;
-        health = enemy.health;
-      }
+      { enemy with velocity = Some impulse }
     else enemy
   else enemy
 
@@ -144,21 +139,17 @@ let update_enemy (enemy : enemy) (dt : float) : enemy =
       let decay = friction_per_second ** dt in
       let new_velocity = Vector2.scale vel decay in
 
+      (*Verifica se bateu na parede*)
+      let final_pos, final_vel =
+        handle_wall_collisions new_position new_velocity enemy.radius
+          (float_of_int screen_width)
+          (float_of_int screen_height)
+      in
+
       (*Verifica se ainda tá se mexendo*)
-      if Vector2.length new_velocity < 1.0 then
-        {
-          position = enemy.position;
-          velocity = None;
-          health = enemy.health;
-          radius = enemy.radius;
-        }
-      else
-        {
-          position = new_position;
-          velocity = Some new_velocity;
-          health = enemy.health;
-          radius = enemy.radius;
-        }
+      if Vector2.length final_vel < 1.0 then
+        { enemy with position = final_pos; velocity = None }
+      else { enemy with position = final_pos; velocity = Some final_vel }
 
 let update (state : game_state) (new_origin : Vector2.t option) (inp : input)
     (dt : float) : game_state =
@@ -167,7 +158,7 @@ let update (state : game_state) (new_origin : Vector2.t option) (inp : input)
   let next_enemies =
     List.map
       (fun e ->
-        let touched_enemy = handle_player_enemy_collisions e state.player in
+        let touched_enemy = handle_player_enemy_collisions e next_player in
         update_enemy touched_enemy dt)
       state.enemies
   in
