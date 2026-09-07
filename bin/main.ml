@@ -95,16 +95,30 @@ let handle_player_enemy_collisions (enemy : enemy) (player : player) :
 
     if dist > 0.0001 then
       let dir = Vector2.scale diff (1.0 /. dist) in
+
+      (* Separação geométrica para evitar ficar preso/grudado *)
+      let overlap = player.radius +. enemy.radius -. dist in
+      let separation = Vector2.scale dir (overlap *. 0.5) in
+      let separated_enemy_pos = Vector2.add enemy.position separation in
+      let separated_player_pos = Vector2.subtract player.position separation in
+
       let player_speed = Vector2.length player.velocity in
       let push_force = Float.max player_speed 250.0 in
       let impulse = Vector2.scale dir push_force in
 
       let next_enemy =
-        { enemy with velocity = Some impulse; health = enemy.health - 1 }
+        {
+          enemy with
+          position = separated_enemy_pos;
+          velocity = Some impulse;
+          health = enemy.health - 1;
+        }
       in
 
       let recoil = Vector2.scale dir (-0.5 *. push_force) in
-      let next_player = { player with velocity = recoil } in
+      let next_player =
+        { player with position = separated_player_pos; velocity = recoil }
+      in
 
       (next_enemy, next_player)
     else (enemy, player)
