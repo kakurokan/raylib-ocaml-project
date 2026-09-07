@@ -84,7 +84,8 @@ let handle_wall_collisions (pos : Vector2.t) (vel : Vector2.t) (r : float)
 
   (Vector2.create new_x new_y, Vector2.create new_vx new_vy)
 
-let handle_player_enemy_collisions (enemy : enemy) (player : player) : enemy =
+let handle_player_enemy_collisions (enemy : enemy) (player : player) :
+    enemy * player =
   if
     check_collision_circles player.position player.radius enemy.position
       enemy.radius
@@ -97,9 +98,17 @@ let handle_player_enemy_collisions (enemy : enemy) (player : player) : enemy =
       let player_speed = Vector2.length player.velocity in
       let push_force = Float.max player_speed 250.0 in
       let impulse = Vector2.scale dir push_force in
-      { enemy with velocity = Some impulse; health = enemy.health - 1 }
-    else enemy
-  else enemy
+
+      let next_enemy =
+        { enemy with velocity = Some impulse; health = enemy.health - 1 }
+      in
+
+      let recoil = Vector2.scale dir (-0.5 *. push_force) in
+      let next_player = { player with velocity = recoil } in
+
+      (next_enemy, next_player)
+    else (enemy, player)
+  else (enemy, player)
 
 let update_player (p : player) (inp : input) (dt : float) : player =
   let vel_with_impulse =
@@ -153,15 +162,18 @@ let update_enemy (enemy : enemy) (dt : float) : enemy =
 
 let update (state : game_state) (new_origin : Vector2.t option) (inp : input)
     (dt : float) : game_state =
-  let next_player = update_player state.player inp dt in
+  let moved_player = update_player state.player inp dt in
 
-  let next_enemies =
-    List.map
-      (fun e ->
-        let touched_enemy = handle_player_enemy_collisions e next_player in
-        update_enemy touched_enemy dt)
-      state.enemies
+  (* Resolve colisões acumulando o novo jogador e a lista de inimigos *)
+  let next_player, updated_enemies =
+    List.fold_right
+      (fun e (cur_player, acc_enemies) ->
+        let e', p' = handle_player_enemy_collisions e cur_player in
+        (p', e' :: acc_enemies))
+      state.enemies (moved_player, [])
   in
+
+  let next_enemies = List.map (fun e -> update_enemy e dt) updated_enemies in
 
   { player = next_player; click_origin = new_origin; enemies = next_enemies }
 
