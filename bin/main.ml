@@ -97,7 +97,7 @@ let handle_player_enemy_collisions (enemy : enemy) (player : player) : enemy =
       let player_speed = Vector2.length player.velocity in
       let push_force = Float.max player_speed 250.0 in
       let impulse = Vector2.scale dir push_force in
-      { enemy with velocity = Some impulse }
+      { enemy with velocity = Some impulse; health = enemy.health - 1 }
     else enemy
   else enemy
 
