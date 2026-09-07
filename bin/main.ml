@@ -9,7 +9,20 @@ let screen_height = 600
    ========================================================================= *)
 
 type player = { position : Vector2.t; velocity : Vector2.t; radius : float }
-type game_state = { player : player; click_origin : Vector2.t option }
+
+type enemy = {
+  position : Vector2.t;
+  velocity : Vector2.t option;
+  health : int;
+  radius : float;
+}
+
+type game_state = {
+  player : player;
+  click_origin : Vector2.t option;
+  enemies : enemy list;
+}
+
 type input = { drag_impulse : Vector2.t option }
 
 (* =========================================================================
@@ -71,6 +84,28 @@ let handle_wall_collisions (pos : Vector2.t) (vel : Vector2.t) (r : float)
 
   (Vector2.create new_x new_y, Vector2.create new_vx new_vy)
 
+let handle_player_enemy_collisions (enemy : enemy) (player : player) : enemy =
+  if
+    check_collision_circles player.position player.radius enemy.position
+      enemy.radius
+  then
+    let diff = Vector2.subtract enemy.position player.position in
+    let dist = Vector2.length diff in
+
+    if dist > 0.0001 then
+      let dir = Vector2.scale diff (1.0 /. dist) in
+      let player_speed = Vector2.length player.velocity in
+      let push_force = Float.max player_speed 250.0 in
+      let impulse = Vector2.scale dir push_force in
+      {
+        position = enemy.position;
+        velocity = Some impulse;
+        radius = enemy.radius;
+        health = enemy.health;
+      }
+    else enemy
+  else enemy
+
 let update_player (p : player) (inp : input) (dt : float) : player =
   let vel_with_impulse =
     match inp.drag_impulse with
@@ -96,9 +131,48 @@ let update_player (p : player) (inp : input) (dt : float) : player =
 
   { position = final_pos; velocity = final_vel; radius = p.radius }
 
+let update_enemy (enemy : enemy) (dt : float) : enemy =
+  match enemy.velocity with
+  | None -> enemy
+  | Some vel ->
+      (*Deslocamento*)
+      let frame_displacement = Vector2.scale vel dt in
+      let new_position = Vector2.add enemy.position frame_displacement in
+
+      (*Fricção*)
+      let friction_per_second = 0.08 in
+      let decay = friction_per_second ** dt in
+      let new_velocity = Vector2.scale vel decay in
+
+      (*Verifica se ainda tá se mexendo*)
+      if Vector2.length new_velocity < 1.0 then
+        {
+          position = enemy.position;
+          velocity = None;
+          health = enemy.health;
+          radius = enemy.radius;
+        }
+      else
+        {
+          position = new_position;
+          velocity = Some new_velocity;
+          health = enemy.health;
+          radius = enemy.radius;
+        }
+
 let update (state : game_state) (new_origin : Vector2.t option) (inp : input)
     (dt : float) : game_state =
-  { player = update_player state.player inp dt; click_origin = new_origin }
+  let next_player = update_player state.player inp dt in
+
+  let next_enemies =
+    List.map
+      (fun e ->
+        let touched_enemy = handle_player_enemy_collisions e state.player in
+        update_enemy touched_enemy dt)
+      state.enemies
+  in
+
+  { player = next_player; click_origin = new_origin; enemies = next_enemies }
 
 (* =========================================================================
    4. RENDERIZAÇÃO (View / Draw)
@@ -108,8 +182,15 @@ let draw (state : game_state) =
   begin_drawing ();
   clear_background Color.raywhite;
 
+  (*Desenha o player*)
   draw_circle_v state.player.position state.player.radius Color.red;
 
+  (*Desenha os inimigos*)
+  List.iter
+    (fun e -> draw_circle_v e.position e.radius Color.blue)
+    state.enemies;
+
+  (*Mira do estilingue*)
   (match state.click_origin with
   | Some origin when is_mouse_button_down MouseButton.Left ->
       draw_line_v origin (get_mouse_position ()) Color.gray
@@ -150,6 +231,18 @@ let () =
           radius = 16.0;
         };
       click_origin = None;
+      enemies =
+        [
+          {
+            position =
+              Vector2.create
+                ((float_of_int screen_width /. 2.0) +. 20.0)
+                ((float_of_int screen_height /. 2.0) +. 20.0);
+            velocity = None;
+            health = 10;
+            radius = 16.0;
+          };
+        ];
     }
   in
 
