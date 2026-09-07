@@ -7,38 +7,41 @@ open Raylib
    ========================================================================= *)
 
 (* O jogador possui uma posição atual no mundo e um alvo para onde está se movendo *)
-type player = { 
-  pos : Vector2.t; 
-  target : Vector2.t 
-}
+type player = { position : Vector2.t; velocity : Vector2.t }
 
 (* O estado global do jogo reúne todas as entidades e pontuações do frame atual *)
-type game_state = { 
-  player : player; 
-  score : int 
-}
+type game_state = { player : player; click_origin : Vector2.t option }
 
 (* Representa as intenções capturadas do jogador neste frame.
    Usa 'option' porque o clique pode ter acontecido (Some) ou não (None). *)
-type input = { 
-  new_target : Vector2.t option 
-}
+type input = { drag_impulse : Vector2.t option }
 
 (* =========================================================================
    2. ENTRADA (I/O)
    Lê os periféricos via Raylib e traduz eventos em dados puros do tipo 'input'.
    ========================================================================= *)
-let read_inputs () =
-  (* Detecta apenas o clique inicial do botão esquerdo do mouse *)
-  if is_mouse_button_pressed MouseButton.Left then
-    (* Subtrai 16.0 para que o centro do quadrado (32x32) fique sob o cursor *)
-    let mx = float_of_int (get_mouse_x ()) -. 16.0 in
-    let my = float_of_int (get_mouse_y ()) -. 16.0 in
-    (* Cria o vetor e o embrulha no construtor 'Some' *)
-    { new_target = Some (Vector2.create mx my) }
-  else 
-    (* Nenhum clique neste frame *)
-    { new_target = None }
+let read_input click_origin =
+  (*Guarda a nova origem do mouse *)
+  let new_origin =
+    if is_mouse_button_pressed MouseButton.Left then
+      Some (get_mouse_position ())
+    else click_origin
+  in
+
+  (* Quando solta o botão esquerdo: calcula o impulso baseado no estilingue *)
+  let impulse, final_origin =
+    if is_mouse_button_released MouseButton.Left then
+      match new_origin with
+      | Some origin ->
+          let mouse_pos = get_mouse_position () in
+          let diff = Vector2.subtract mouse_pos origin in
+          let negate = Vector2.negate diff in
+          (Some negate, None)
+      | None -> (None, None)
+    else (None, new_origin)
+  in
+
+  (final_origin, { drag_impulse = impulse })
 
 (* =========================================================================
    3. ATUALIZAÇÃO / LÓGICA PURA (Update)
@@ -48,25 +51,30 @@ let read_inputs () =
 
 (* Atualiza a física do jogador com base nos comandos e no tempo decorrido *)
 let update_player (p : player) (inp : input) (dt : float) : player =
-  let speed = 250.0 in
-  
-  (* Desempacota o clique opcional:
-     - Se clicou (Some t): adota 't' como novo alvo.
-     - Se não clicou (None): mantém o alvo anterior (p.target). *)
-  let target = match inp.new_target with Some t -> t | None -> p.target in
-  
-  (* Desloca o vetor em direção ao alvo respeitando o limite do frame (speed * dt) *)
-  let next_pos = Vector2.move_towards p.pos target (speed *. dt) in
-  
-  (* Retorna uma nova estrutura imutável de player *)
-  { pos = next_pos; target }
+  (* Aplica impulso de estilingue se o mouse foi solto neste frame: .05f *)
+  let vel_with_impulse =
+    match inp.drag_impulse with
+    | Some impulse ->
+        let scaled_impulse = Vector2.scale impulse 5.0 in
+        Vector2.add p.velocity scaled_impulse
+    | None -> p.velocity
+  in
+
+  (*Deslocamento baseado no tempo: pos + (vel * dt) *)
+  let frame_displacement = Vector2.scale vel_with_impulse dt in
+  let new_position = Vector2.add p.position frame_displacement in
+
+  (* Aplica fricção na velocidade*)
+  let friction_per_second = 0.05 in
+  let decay = friction_per_second ** dt in
+  let new_velocity = Vector2.scale vel_with_impulse decay in
+
+  { position = new_position; velocity = new_velocity }
 
 (* Função central de atualização: orquestra todos os subsistemas do jogo *)
-let update (state : game_state) (inp : input) (dt : float) : game_state =
-  { 
-    player = update_player state.player inp dt; 
-    score = state.score + 1 (* Incrementa a pontuação a cada frame *)
-  }
+let update (state : game_state) (new_origin : Vector2.t option) (inp : input)
+    (dt : float) : game_state =
+  { player = update_player state.player inp dt; click_origin = new_origin }
 
 (* =========================================================================
    4. RENDERIZAÇÃO (View / Draw)
@@ -77,14 +85,13 @@ let draw (state : game_state) =
   clear_background Color.raywhite;
 
   (* Converte as coordenadas float do vetor em inteiros exigidos pelo draw_rectangle *)
-  draw_rectangle
-    (int_of_float (Vector2.x state.player.pos))
-    (int_of_float (Vector2.y state.player.pos))
-    32 32 Color.blue;
+  draw_circle_v state.player.position 10.0 Color.red;
 
-  (* Exibe o placar no canto superior esquerdo *)
-  draw_text (Printf.sprintf "Score: %d" state.score) 12 12 20 Color.darkgray;
-  
+  (match state.click_origin with
+  | Some origin when is_mouse_button_down MouseButton.Left ->
+      draw_line_v origin (get_mouse_position ()) Color.gray
+  | _ -> ());
+
   end_drawing ()
 
 (* =========================================================================
@@ -96,29 +103,42 @@ let rec game_loop (state : game_state) =
   (* Interrompe a recursão se o usuário fechou a janela ou apertou ESC *)
   if window_should_close () then ()
   else
-    let dt = get_frame_time () in           (* Tempo do último frame em segundos *)
-    let inp = read_inputs () in             (* 1. Coleta entradas *)
-    let next_state = update state inp dt in (* 2. Calcula o novo estado *)
-    draw next_state;                        (* 3. Renderiza o novo estado *)
-    game_loop next_state                    (* 4. Reinicia o ciclo com o novo estado *)
+    (* Tempo do último frame em segundos *)
+    let dt = get_frame_time () in
+    (* 1. Coleta entradas *)
+    let new_origin, inp = read_input state.click_origin in
+    (* 2. Calcula o novo estado *)
+    let next_state = update state new_origin inp dt in
+    (* 3. Renderiza o novo estado *)
+    draw next_state;
+    (* 4. Reinicia o ciclo com o novo estado *)
+    game_loop next_state
 
 (* =========================================================================
    6. PONTO DE ENTRADA (Initialization & Cleanup)
    Configura a janela do SO, aloca recursos e inicia o loop com o estado base.
    ========================================================================= *)
 let () =
-  init_window 800 600 "Meu Jogo em OCaml Raylib";
-  set_target_fps 60; (* Trava a taxa de quadros para suavizar o delta time *)
+  let width = 800 in
+  let height = 600 in
+
+  init_window width height "Meu Jogo em OCaml Raylib";
+  set_target_fps 60;
+
+  (* Trava a taxa de quadros para suavizar o delta time *)
 
   (* Define as condições iniciais do jogo (posicionado no centro 400x300) *)
   let initial_state =
     {
       player =
         {
-          pos = Vector2.create (400.0 -. 16.0) (300.0 -. 16.0);
-          target = Vector2.create (400.0 -. 16.0) (300.0 -. 16.0);
+          position =
+            Vector2.create
+              (float_of_int width /. 2.0)
+              (float_of_int height /. 2.0);
+          velocity = Vector2.create 0.0 0.0;
         };
-      score = 0;
+      click_origin = None;
     }
   in
 
