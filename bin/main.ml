@@ -1,15 +1,21 @@
 open Raylib
 
-(* Dimensões da janela como constantes globais *)
+(* =========================================================================
+   CONFIGURAÇÕES GLOBAIS
+   ========================================================================= *)
+
 let screen_width = 800
 let screen_height = 600
 
 (* =========================================================================
-   1. MODELO DE DADOS (Types / State)
+   1. MODELO DE DADOS (Model / State)
+   Estruturas de dados imutáveis que representam o estado completo da aplicação.
    ========================================================================= *)
 
+(* Entidade controlada pelo usuário via mecânica de estilingue *)
 type player = { position : Vector2.t; velocity : Vector2.t; radius : float }
 
+(* Entidade reativa; inicia imóvel ('velocity = None') e reage a colisões *)
 type enemy = {
   position : Vector2.t;
   velocity : Vector2.t option;
@@ -17,21 +23,28 @@ type enemy = {
   radius : float;
 }
 
+(* Estado global imutável propagado quadro a quadro pelo loop principal *)
 type game_state = {
   player : player;
-  click_origin : Vector2.t option;
+  click_origin : Vector2.t option; (* Coordenada inicial do arrasto para mira *)
   enemies : enemy list;
 }
 
-type input = { drag_impulse : Vector2.t option }
+(* Intenções capturadas do jogador no frame atual *)
+type input = {
+  drag_impulse : Vector2.t option;
+      (* Impulso elástico gerado ao soltar o clique *)
+}
 
 (* =========================================================================
-   2. ENTRADA (I/O)
+   2. ENTRADA (Input / IO)
+   Efetua a leitura de periféricos e traduz eventos brutos em dados puros.
    ========================================================================= *)
 
 let read_input (state : game_state) =
   let mouse_pos = get_mouse_position () in
 
+  (* Inicia o arrasto se o botão esquerdo for pressionado sobre o jogador *)
   let new_origin =
     if is_mouse_button_pressed MouseButton.Left then
       if
@@ -42,6 +55,7 @@ let read_input (state : game_state) =
     else state.click_origin
   in
 
+  (* Ao soltar o clique, gera um vetor de impulso em direção oposta ao arrasto *)
   let impulse, final_origin =
     if is_mouse_button_released MouseButton.Left then
       match new_origin with
@@ -56,26 +70,29 @@ let read_input (state : game_state) =
   (final_origin, { drag_impulse = impulse })
 
 (* =========================================================================
-   3. ATUALIZAÇÃO / LÓGICA PURA (Update)
+   3. ATUALIZAÇÃO E FÍSICA (Update / Pure Logic)
+   Funções matemáticas puras sem efeitos colaterais.
    ========================================================================= *)
 
+(* Trata os limites da janela: inverte velocidade com restituição e corrige penetração *)
 let handle_wall_collisions (pos : Vector2.t) (vel : Vector2.t) (r : float)
     (w : float) (h : float) =
   let bounce = 0.75 in
+  (* Coeficiente de restituição (perda parcial de energia) *)
 
   let x = Vector2.x pos in
   let y = Vector2.y pos in
   let vx = Vector2.x vel in
   let vy = Vector2.y vel in
 
-  (* Colisão horizontal: Esquerda ou Direita *)
+  (* Colisão horizontal: bordas esquerda e direita *)
   let new_x, new_vx =
     if x -. r < 0.0 then (r, -.vx *. bounce)
     else if x +. r > w then (w -. r, -.vx *. bounce)
     else (x, vx)
   in
 
-  (* Colisão vertical: Teto ou Chão *)
+  (* Colisão vertical: bordas superior e inferior *)
   let new_y, new_vy =
     if y -. r < 0.0 then (r, -.vy *. bounce)
     else if y +. r > h then (h -. r, -.vy *. bounce)
@@ -84,6 +101,7 @@ let handle_wall_collisions (pos : Vector2.t) (vel : Vector2.t) (r : float)
 
   (Vector2.create new_x new_y, Vector2.create new_vx new_vy)
 
+(* Trata colisão entre jogador e inimigo: separação posicional, impulso e recuo *)
 let handle_player_enemy_collisions (enemy : enemy) (player : player) :
     enemy * player =
   if
@@ -93,15 +111,17 @@ let handle_player_enemy_collisions (enemy : enemy) (player : player) :
     let diff = Vector2.subtract enemy.position player.position in
     let dist = Vector2.length diff in
 
+    (* Evita divisão por zero caso as posições coincidam exatamente *)
     if dist > 0.0001 then
       let dir = Vector2.scale diff (1.0 /. dist) in
 
-      (* Separação geométrica para evitar ficar preso/grudado *)
+      (* Correção posicional imediata: distribui a sobreposição meio a meio para evitar travamento *)
       let overlap = player.radius +. enemy.radius -. dist in
       let separation = Vector2.scale dir (overlap *. 0.5) in
       let separated_enemy_pos = Vector2.add enemy.position separation in
       let separated_player_pos = Vector2.subtract player.position separation in
 
+      (* Transfere momento do impacto para o inimigo *)
       let player_speed = Vector2.length player.velocity in
       let push_force = Float.max player_speed 250.0 in
       let impulse = Vector2.scale dir push_force in
@@ -115,6 +135,7 @@ let handle_player_enemy_collisions (enemy : enemy) (player : player) :
         }
       in
 
+      (* Aplica recuo proporcional no jogador (ação e reação) *)
       let recoil = Vector2.scale dir (-0.5 *. push_force) in
       let next_player =
         { player with position = separated_player_pos; velocity = recoil }
@@ -124,7 +145,9 @@ let handle_player_enemy_collisions (enemy : enemy) (player : player) :
     else (enemy, player)
   else (enemy, player)
 
+(* Atualiza cinemática, fricção exponencial e limites de tela do jogador *)
 let update_player (p : player) (inp : input) (dt : float) : player =
+  (* Aplica força de estilingue caso o mouse tenha sido solto neste frame *)
   let vel_with_impulse =
     match inp.drag_impulse with
     | Some impulse ->
@@ -133,14 +156,16 @@ let update_player (p : player) (inp : input) (dt : float) : player =
     | None -> p.velocity
   in
 
+  (* Integração temporal de Euler: pos = pos + (vel * dt) *)
   let frame_displacement = Vector2.scale vel_with_impulse dt in
   let new_position = Vector2.add p.position frame_displacement in
 
+  (* Amortecimento por fricção independente da taxa de quadros *)
   let friction_per_second = 0.05 in
   let decay = friction_per_second ** dt in
   let new_velocity = Vector2.scale vel_with_impulse decay in
 
-  (* Usa float_of_int para passar as dimensões como float *)
+  (* Resolução contra as quatro paredes *)
   let final_pos, final_vel =
     handle_wall_collisions new_position new_velocity p.radius
       (float_of_int screen_width)
@@ -149,36 +174,39 @@ let update_player (p : player) (inp : input) (dt : float) : player =
 
   { position = final_pos; velocity = final_vel; radius = p.radius }
 
+(* Atualiza cinemática do inimigo; permanece inerte se a velocidade for 'None' *)
 let update_enemy (enemy : enemy) (dt : float) : enemy =
   match enemy.velocity with
   | None -> enemy
   | Some vel ->
-      (*Deslocamento*)
+      (* Deslocamento linear *)
       let frame_displacement = Vector2.scale vel dt in
       let new_position = Vector2.add enemy.position frame_displacement in
 
-      (*Fricção*)
+      (* Fricção no solo *)
       let friction_per_second = 0.08 in
       let decay = friction_per_second ** dt in
       let new_velocity = Vector2.scale vel decay in
 
-      (*Verifica se bateu na parede*)
+      (* Quique nas paredes *)
       let final_pos, final_vel =
         handle_wall_collisions new_position new_velocity enemy.radius
           (float_of_int screen_width)
           (float_of_int screen_height)
       in
 
-      (*Verifica se ainda tá se mexendo*)
+      (* Repouso: cancela a velocidade quando ela fica residual *)
       if Vector2.length final_vel < 1.0 then
         { enemy with position = final_pos; velocity = None }
       else { enemy with position = final_pos; velocity = Some final_vel }
 
+(* Orquestrador do estado global: integra entidades e resolve colisões *)
 let update (state : game_state) (new_origin : Vector2.t option) (inp : input)
     (dt : float) : game_state =
+  (* 1. Move o jogador primeiro *)
   let moved_player = update_player state.player inp dt in
 
-  (* Resolve colisões acumulando o novo jogador e a lista de inimigos *)
+  (* 2. Resolve colisões jogador-inimigos acumulando as alterações em ambas as partes *)
   let next_player, updated_enemies =
     List.fold_right
       (fun e (cur_player, acc_enemies) ->
@@ -187,27 +215,29 @@ let update (state : game_state) (new_origin : Vector2.t option) (inp : input)
       state.enemies (moved_player, [])
   in
 
+  (* 3. Atualiza a física de cada inimigo individualmente *)
   let next_enemies = List.map (fun e -> update_enemy e dt) updated_enemies in
 
   { player = next_player; click_origin = new_origin; enemies = next_enemies }
 
 (* =========================================================================
    4. RENDERIZAÇÃO (View / Draw)
+   Consome o estado de forma somente leitura para desenhar na tela.
    ========================================================================= *)
 
 let draw (state : game_state) =
   begin_drawing ();
   clear_background Color.raywhite;
 
-  (*Desenha o player*)
+  (* Jogador *)
   draw_circle_v state.player.position state.player.radius Color.red;
 
-  (*Desenha os inimigos*)
+  (* Inimigos *)
   List.iter
     (fun e -> draw_circle_v e.position e.radius Color.blue)
     state.enemies;
 
-  (*Mira do estilingue*)
+  (* Traço guia do estilingue durante o arrasto *)
   (match state.click_origin with
   | Some origin when is_mouse_button_down MouseButton.Left ->
       draw_line_v origin (get_mouse_position ()) Color.gray
@@ -217,6 +247,7 @@ let draw (state : game_state) =
 
 (* =========================================================================
    5. LOOP PRINCIPAL (Game Loop)
+   Loop infinito por recursão em cauda garantindo consumo de pilha constante.
    ========================================================================= *)
 
 let rec game_loop (state : game_state) =
@@ -230,6 +261,7 @@ let rec game_loop (state : game_state) =
 
 (* =========================================================================
    6. PONTO DE ENTRADA (Initialization & Cleanup)
+   Inicialização do contexto da janela Raylib e alocação do estado inicial.
    ========================================================================= *)
 
 let () =
