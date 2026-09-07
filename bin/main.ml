@@ -7,7 +7,7 @@ open Raylib
    ========================================================================= *)
 
 (* O jogador possui uma posição atual no mundo e um alvo para onde está se movendo *)
-type player = { position : Vector2.t; velocity : Vector2.t }
+type player = { position : Vector2.t; velocity : Vector2.t; radius : float }
 
 (* O estado global do jogo reúne todas as entidades e pontuações do frame atual *)
 type game_state = { player : player; click_origin : Vector2.t option }
@@ -20,12 +20,18 @@ type input = { drag_impulse : Vector2.t option }
    2. ENTRADA (I/O)
    Lê os periféricos via Raylib e traduz eventos em dados puros do tipo 'input'.
    ========================================================================= *)
-let read_input click_origin =
-  (*Guarda a nova origem do mouse *)
+let read_input (state : game_state) =
+  (* Detecta se o clique inicial atingiu o círculo do jogador *)
   let new_origin =
     if is_mouse_button_pressed MouseButton.Left then
-      Some (get_mouse_position ())
-    else click_origin
+      let mouse_pos = get_mouse_position () in
+
+      if
+        check_collision_point_circle mouse_pos state.player.position
+          state.player.radius
+      then Some mouse_pos
+      else state.click_origin
+    else state.click_origin
   in
 
   (* Quando solta o botão esquerdo: calcula o impulso baseado no estilingue *)
@@ -69,7 +75,7 @@ let update_player (p : player) (inp : input) (dt : float) : player =
   let decay = friction_per_second ** dt in
   let new_velocity = Vector2.scale vel_with_impulse decay in
 
-  { position = new_position; velocity = new_velocity }
+  { position = new_position; velocity = new_velocity; radius = p.radius }
 
 (* Função central de atualização: orquestra todos os subsistemas do jogo *)
 let update (state : game_state) (new_origin : Vector2.t option) (inp : input)
@@ -85,7 +91,7 @@ let draw (state : game_state) =
   clear_background Color.raywhite;
 
   (* Converte as coordenadas float do vetor em inteiros exigidos pelo draw_rectangle *)
-  draw_circle_v state.player.position 10.0 Color.red;
+  draw_circle_v state.player.position state.player.radius Color.red;
 
   (match state.click_origin with
   | Some origin when is_mouse_button_down MouseButton.Left ->
@@ -106,7 +112,7 @@ let rec game_loop (state : game_state) =
     (* Tempo do último frame em segundos *)
     let dt = get_frame_time () in
     (* 1. Coleta entradas *)
-    let new_origin, inp = read_input state.click_origin in
+    let new_origin, inp = read_input state in
     (* 2. Calcula o novo estado *)
     let next_state = update state new_origin inp dt in
     (* 3. Renderiza o novo estado *)
@@ -137,6 +143,7 @@ let () =
               (float_of_int width /. 2.0)
               (float_of_int height /. 2.0);
           velocity = Vector2.create 0.0 0.0;
+          radius = 10.0;
         };
       click_origin = None;
     }
