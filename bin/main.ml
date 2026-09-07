@@ -1,31 +1,26 @@
-(* Abre o módulo Raylib no escopo global para não precisar prefixar tudo com 'Raylib.' *)
 open Raylib
+
+(* Dimensões da janela como constantes globais *)
+let screen_width = 800
+let screen_height = 600
 
 (* =========================================================================
    1. MODELO DE DADOS (Types / State)
-   Estruturas imutáveis que definem todo o estado da aplicação.
    ========================================================================= *)
 
-(* O jogador possui uma posição atual no mundo e um alvo para onde está se movendo *)
 type player = { position : Vector2.t; velocity : Vector2.t; radius : float }
-
-(* O estado global do jogo reúne todas as entidades e pontuações do frame atual *)
 type game_state = { player : player; click_origin : Vector2.t option }
-
-(* Representa as intenções capturadas do jogador neste frame.
-   Usa 'option' porque o clique pode ter acontecido (Some) ou não (None). *)
 type input = { drag_impulse : Vector2.t option }
 
 (* =========================================================================
    2. ENTRADA (I/O)
-   Lê os periféricos via Raylib e traduz eventos em dados puros do tipo 'input'.
    ========================================================================= *)
+
 let read_input (state : game_state) =
-  (* Detecta se o clique inicial atingiu o círculo do jogador *)
+  let mouse_pos = get_mouse_position () in
+
   let new_origin =
     if is_mouse_button_pressed MouseButton.Left then
-      let mouse_pos = get_mouse_position () in
-
       if
         check_collision_point_circle mouse_pos state.player.position
           state.player.radius
@@ -34,12 +29,10 @@ let read_input (state : game_state) =
     else state.click_origin
   in
 
-  (* Quando solta o botão esquerdo: calcula o impulso baseado no estilingue *)
   let impulse, final_origin =
     if is_mouse_button_released MouseButton.Left then
       match new_origin with
       | Some origin ->
-          let mouse_pos = get_mouse_position () in
           let diff = Vector2.subtract mouse_pos origin in
           let negate = Vector2.negate diff in
           (Some negate, None)
@@ -51,13 +44,34 @@ let read_input (state : game_state) =
 
 (* =========================================================================
    3. ATUALIZAÇÃO / LÓGICA PURA (Update)
-   Funções matemáticas puras: recebem dados antigos e retornam novos dados.
-   Não realizam I/O e não alteram variáveis por referência.
    ========================================================================= *)
 
-(* Atualiza a física do jogador com base nos comandos e no tempo decorrido *)
+let handle_wall_collisions (pos : Vector2.t) (vel : Vector2.t) (r : float)
+    (w : float) (h : float) =
+  let bounce = 0.75 in
+
+  let x = Vector2.x pos in
+  let y = Vector2.y pos in
+  let vx = Vector2.x vel in
+  let vy = Vector2.y vel in
+
+  (* Colisão horizontal: Esquerda ou Direita *)
+  let new_x, new_vx =
+    if x -. r < 0.0 then (r, -.vx *. bounce)
+    else if x +. r > w then (w -. r, -.vx *. bounce)
+    else (x, vx)
+  in
+
+  (* Colisão vertical: Teto ou Chão *)
+  let new_y, new_vy =
+    if y -. r < 0.0 then (r, -.vy *. bounce)
+    else if y +. r > h then (h -. r, -.vy *. bounce)
+    else (y, vy)
+  in
+
+  (Vector2.create new_x new_y, Vector2.create new_vx new_vy)
+
 let update_player (p : player) (inp : input) (dt : float) : player =
-  (* Aplica impulso de estilingue se o mouse foi solto neste frame: .05f *)
   let vel_with_impulse =
     match inp.drag_impulse with
     | Some impulse ->
@@ -66,31 +80,34 @@ let update_player (p : player) (inp : input) (dt : float) : player =
     | None -> p.velocity
   in
 
-  (*Deslocamento baseado no tempo: pos + (vel * dt) *)
   let frame_displacement = Vector2.scale vel_with_impulse dt in
   let new_position = Vector2.add p.position frame_displacement in
 
-  (* Aplica fricção na velocidade*)
   let friction_per_second = 0.05 in
   let decay = friction_per_second ** dt in
   let new_velocity = Vector2.scale vel_with_impulse decay in
 
-  { position = new_position; velocity = new_velocity; radius = p.radius }
+  (* Usa float_of_int para passar as dimensões como float *)
+  let final_pos, final_vel =
+    handle_wall_collisions new_position new_velocity p.radius
+      (float_of_int screen_width)
+      (float_of_int screen_height)
+  in
 
-(* Função central de atualização: orquestra todos os subsistemas do jogo *)
+  { position = final_pos; velocity = final_vel; radius = p.radius }
+
 let update (state : game_state) (new_origin : Vector2.t option) (inp : input)
     (dt : float) : game_state =
   { player = update_player state.player inp dt; click_origin = new_origin }
 
 (* =========================================================================
    4. RENDERIZAÇÃO (View / Draw)
-   Consome o estado imutável apenas para desenhar na tela via OpenGL.
    ========================================================================= *)
+
 let draw (state : game_state) =
   begin_drawing ();
   clear_background Color.raywhite;
 
-  (* Converte as coordenadas float do vetor em inteiros exigidos pelo draw_rectangle *)
   draw_circle_v state.player.position state.player.radius Color.red;
 
   (match state.click_origin with
@@ -102,55 +119,39 @@ let draw (state : game_state) =
 
 (* =========================================================================
    5. LOOP PRINCIPAL (Game Loop)
-   Loop infinito implementado via recursão em cauda (Tail Call Optimization).
-   Cada iteração consome o frame atual e passa o próximo estado como argumento.
    ========================================================================= *)
+
 let rec game_loop (state : game_state) =
-  (* Interrompe a recursão se o usuário fechou a janela ou apertou ESC *)
   if window_should_close () then ()
   else
-    (* Tempo do último frame em segundos *)
     let dt = get_frame_time () in
-    (* 1. Coleta entradas *)
     let new_origin, inp = read_input state in
-    (* 2. Calcula o novo estado *)
     let next_state = update state new_origin inp dt in
-    (* 3. Renderiza o novo estado *)
     draw next_state;
-    (* 4. Reinicia o ciclo com o novo estado *)
     game_loop next_state
 
 (* =========================================================================
    6. PONTO DE ENTRADA (Initialization & Cleanup)
-   Configura a janela do SO, aloca recursos e inicia o loop com o estado base.
    ========================================================================= *)
-let () =
-  let width = 800 in
-  let height = 600 in
 
-  init_window width height "Meu Jogo em OCaml Raylib";
+let () =
+  init_window screen_width screen_height "Meu Jogo em OCaml Raylib";
   set_target_fps 60;
 
-  (* Trava a taxa de quadros para suavizar o delta time *)
-
-  (* Define as condições iniciais do jogo (posicionado no centro 400x300) *)
   let initial_state =
     {
       player =
         {
           position =
             Vector2.create
-              (float_of_int width /. 2.0)
-              (float_of_int height /. 2.0);
+              (float_of_int screen_width /. 2.0)
+              (float_of_int screen_height /. 2.0);
           velocity = Vector2.create 0.0 0.0;
-          radius = 10.0;
+          radius = 16.0;
         };
       click_origin = None;
     }
   in
 
-  (* Inicia o ciclo do jogo *)
   game_loop initial_state;
-
-  (* Desaloca o contexto OpenGL e fecha a janela ao sair do loop *)
   close_window ()
