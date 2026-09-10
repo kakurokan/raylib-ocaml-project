@@ -1,16 +1,14 @@
 open Raylib
 
-type player = {
-  position : Vector2.t;
-  velocity : Vector2.t;
-  radius : float;
-}
+type player = { position : Vector2.t; velocity : Vector2.t; radius : float }
+type crack = Vector2.t * Vector2.t
 
 type enemy = {
   position : Vector2.t;
   velocity : Vector2.t option;
   health : int;
   radius : float;
+  cracks : crack list;
 }
 
 type game_state = {
@@ -19,6 +17,4 @@ type game_state = {
   enemies : enemy list;
 }
 
-type input = {
-  drag_impulse : Vector2.t option;
-}
+type input = { drag_impulse : Vector2.t option }

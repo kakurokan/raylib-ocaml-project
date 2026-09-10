@@ -1,6 +1,21 @@
 open Raylib
 open Types
 
+(*Generate a segment on the oppesite direction of impact*)
+let generate_crack (impact_dir : Vector2.t) (radius : float) : crack =
+  (*Where the player hit*)
+  let start_offset = Vector2.scale (Vector2.negate impact_dir) radius in
+
+  (*Final point*)
+  let jitter_x = Random.float 10.0 -. 5.0 in
+  let jitter_y = Random.float 10.0 -. 5.0 in
+  let end_offset =
+    Vector2.create
+      ((Vector2.x start_offset *. 0.2) +. jitter_x)
+      ((Vector2.y start_offset *. 0.2) +. jitter_y)
+  in
+  (start_offset, end_offset)
+
 let resolve_collision (enemy : enemy) (player : player) : enemy * player =
   if
     check_collision_circles player.position player.radius enemy.position
@@ -22,12 +37,16 @@ let resolve_collision (enemy : enemy) (player : player) : enemy * player =
       let push_force = Float.max player_speed 250.0 in
       let impulse = Vector2.scale dir push_force in
 
+      (* Generate a crack *)
+      let new_crack = generate_crack dir enemy.radius in
+
       let next_enemy =
         {
           enemy with
           position = separated_enemy_pos;
           velocity = Some impulse;
           health = enemy.health - 1;
+          cracks = new_crack :: enemy.cracks;
         }
       in
 
@@ -75,8 +94,7 @@ let update_enemy (enemy : enemy) (dt : float) : enemy =
 
       if Vector2.length final_vel < 1.0 then
         { enemy with position = final_pos; velocity = None }
-      else
-        { enemy with position = final_pos; velocity = Some final_vel }
+      else { enemy with position = final_pos; velocity = Some final_vel }
 
 let step (state : game_state) (new_origin : Vector2.t option) (inp : input)
     (dt : float) : game_state =

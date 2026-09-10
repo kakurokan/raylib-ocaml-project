@@ -11,7 +11,8 @@ let rec game_loop (state : Types.game_state) =
     game_loop next_state
 
 let () =
-  init_window Config.screen_width Config.screen_height "Meu Jogo em OCaml Raylib";
+  init_window Config.screen_width Config.screen_height
+    "Meu Jogo em OCaml Raylib";
   set_target_fps Config.target_fps;
 
   let initial_state : Types.game_state =
@@ -36,15 +37,7 @@ let () =
             velocity = None;
             health = 5;
             radius = 16.0;
-          };
-          {
-            position =
-              Vector2.create
-                ((Config.screen_width_f /. 2.0) -. 100.0)
-                ((Config.screen_height_f /. 2.0) -. 80.0);
-            velocity = None;
-            health = 3;
-            radius = 14.0;
+            cracks = [];
           };
         ];
     }
