@@ -1,117 +1,101 @@
 # Raylib OCaml Demo
 
-A simple graphics and movement demonstration using the [Raylib bindings for OCaml](https://github.com/tjammer/raylib-ocaml) and the [Dune](https://dune.build/) build system.
+Um template/projeto estruturado para desenvolvimento de jogos e simulações 2D em **OCaml** utilizando os bindings para a biblioteca **[Raylib](https://www.raylib.com/)** e gerenciamento de build com **Dune**.
 
-## 📋 Prerequisites
+---
 
-Ensure you have a working OCaml development environment with the `opam` package manager installed.
+## 🏛️ Arquitetura do Projeto
 
-### 1. System Dependencies
+O código-fonte é organizado de forma modular dentro do diretório `lib/`, separando dados, estado, física e renderização (seguindo um fluxo funcional / tipo Elm Architecture / Game Loop desacoplado):
 
-Because Raylib relies on native windowing and graphics libraries (OpenGL/X11/Wayland), install the required system packages:
-
-**Ubuntu / Pop!_OS / Debian:**
-
-```bash
-sudo apt update
-sudo apt install libgl1-mesa-dev libglu1-mesa-dev xorg-dev libwayland-dev
-
-```
-
-**Fedora:**
-
-```bash
-sudo dnf install mesa-libGL-devel libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel wayland-devel
-
-```
-
-**Arch Linux:**
-
-```bash
-sudo pacman -S mesa libx11 libxrandr libxinerama libxcursor libxi wayland
-
-```
-
-**macOS (Homebrew):**
-
-```bash
-brew install raylib
+```text
+raylib-ocaml-project/
+├── bin/
+│   ├── dune
+│   └── main.ml           # Ponto de entrada (inicialização da janela e loop principal)
+├── lib/
+│   ├── config.ml         # Configurações globais (resolução, FPS, constantes)
+│   ├── dune              # Definição da biblioteca interna
+│   ├── input.ml          # Captura e mapeamento de entradas do teclado/mouse
+│   ├── physics.ml        # Cálculos de colisão, vetores e física
+│   ├── types.ml          # Modelagem de dados, tipos de estado do jogo e entidades
+│   ├── update.ml         # Lógica de transição de estado por frame (tick)
+│   └── view.ml           # Renderização e desenho na tela via Raylib
+├── test/
+│   ├── dune
+│   └── test_raylib_ocaml_demo.ml # Testes unitários
+├── dune-project          # Metadados do projeto Dune
+└── raylib_ocaml_demo.opam # Especificação de dependências do OPAM
 
 ```
 
 ---
 
-### 2. OCaml Dependencies
+## 🛠️ Pré-requisitos
 
-Install the `raylib` binding and the `dune` build tool via OPAM:
+Certifique-se de possuir instalado:
+
+* **OCaml** (>= 4.14 ou 5.x)
+* **OPAM** (OCaml Package Manager)
+* **Dune** (>= 3.0)
+* Dependências de sistema para o Raylib (ex: `libgl1-mesa-dev`, `libx11-dev`, `libxcursor-dev`, `libxi-dev`, etc., caso esteja no Linux)
+
+---
+
+## 📦 Instalação das Dependências
+
+Crie ou utilize um switch OPAM local/global e instale as dependências declaradas no `.opam`:
 
 ```bash
-opam update
-opam install raylib dune
+# Opcional: criar um switch local
+opam switch create . 5.1.1 --deps-only -y
+
+# Instalar dependências e ferramentas de desenvolvimento
+opam install . --deps-only --with-test -y
+opam install ocaml-lsp-server ocamlformat -y
 
 ```
 
-*(Optional) Ensure your current OPAM switch environment variables are set:*
+> **Nota:** Certifique-se de que a biblioteca `raylib` para OCaml foi instalada corretamente (`opam install raylib`).
+
+---
+
+## 🚀 Como Executar
+
+Para compilar e executar o projeto:
 
 ```bash
-eval $(opam env)
+dune exec bin/main.exe
+
+```
+
+Durante o desenvolvimento com recarregamento automático (watch mode):
+
+```bash
+dune exec bin/main.exe -w
 
 ```
 
 ---
 
-## 🚀 Getting Started
+## 🧪 Testes e Formatação
 
-Clone the repository and build/run the application with Dune:
+Para rodar os testes unitários:
 
 ```bash
-# Clone the repository
-git clone [https://github.com/YOUR_USERNAME/raylib-ocaml-demo.git](https://github.com/YOUR_USERNAME/raylib-ocaml-demo.git)
-cd raylib-ocaml-demo
+dune runtest
 
-# Build and execute
-dune exec ./bin/main.exe
+```
+
+Para formatar o código com o `ocamlformat`:
+
+```bash
+dune fmt
 
 ```
 
 ---
 
-## 🛠️ Useful Commands
+## 📄 Licença
 
-* **Build only:**
-
-```bash
-dune build
-
-```
-
-* **Clean build artifacts (`_build/`):**
-
-```bash
-dune clean
-
-```
-
-* **Watch mode (rebuilds automatically on save):**
-
-```bash
-dune build -w
-
-```
-
----
-
-## 🎮 Controls
-
-| Key / Input | Action |
-| --- | --- |
-| `W`, `A`, `S`, `D` / Arrow Keys | Move player |
-| `R` | Reset position |
-| `Mouse Scroll` | Adjust target FPS |
-| `ESC` / Close Window | Quit application |
-
----
-
-## 📄 License
-
-Distributed under the [MIT](https://www.google.com/search?q=LICENSE) License.
+Uso pessoal / educacional. Todos os direitos reservados (a definir).
