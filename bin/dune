@@ -1,4 +1,4 @@
 (executable
  (public_name raylib_ocaml_demo)
  (name main)
- (libraries raylib))
+ (libraries game_lib raylib))
